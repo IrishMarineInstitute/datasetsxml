@@ -2,7 +2,7 @@
 import os
 import re
 import sys
-from tidyxml import parse_tree
+from tidyxml import parse_tree, tidy
 from io import BytesIO
 from xml.parsers.expat import ParserCreate, ExpatError, errors
 from xml.sax import saxutils
@@ -153,6 +153,42 @@ class DatasetExtractor(saxutils.XMLGenerator):
         self.out_file.write(b']]>')
         self._in_cdata = 0
 
+def write_parts_READMEmd(filename):
+    with open("parts/README.md",'a') as out:
+        out.write('''# datasets.xml split
+
+This folder contains a split version of {0}
+
+## Important Files
+
+ * _datasets.xml is the master xml document
+ * _actual_secrets.txt contains your secrets (connectionProperties) as XML entities. Probably you *don't* want to put this file to version control.
+ * _mock_secrets contains the XML entites but no secrets, and is OK to put to version control
+ * _secrets contains the XML entities which are one or other of _actual_secrets.txt or _mock_secrets.txt. Probaby you *don't* want to put this file to version control.
+ * There is one xml file per dataset.
+
+## Before committing your files to version control...
+
+ 1. Check _datasets.xml does not contain any secrets (for example in commented out datasets)
+ 2. Make a safe copy of _actual_secrets.txt
+
+# Regenerating datasets.xml
+
+ 1. First make sure you are using the actual secrets:
+    ```cp parts/_actual_secrets.txt parts/secrets.txt```
+    
+ 2. Use the join datasets script
+
+```bin/join_datasets.xml > new_datasets.xml``
+
+'''.format(filename))
+
+def success_message():
+    return '''The file was successfully split to parts/_datasets.xml
+
+WARNING: secrets are contained in file parts/_actual_secrets.txt
+
+See parts/README.md to find out more.'''
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -170,5 +206,19 @@ if __name__ == "__main__":
     tree = parse_tree(filename)
     parser = DatasetExtractor(tree.docinfo.encoding)
     parser.parse(filename)
-    shutil.copyfile('parts/_example_secrets.txt', 'parts/_secrets.txt')
+    success = False
+    try:
+        shutil.copyfile('parts/_actual_secrets.txt', 'parts/_secrets.txt')
+        before = BytesIO()
+        tidy(filename, before)
+        after = BytesIO()
+        tidy("parts/_datasets.xml", after)
+        if before.getvalue() == after.getvalue():
+            success = True
+    finally:
+        shutil.copyfile('parts/_example_secrets.txt', 'parts/_secrets.txt')
+    if not success:
+        print("WARNING: The original file and generated file do not match exactly", file=sys.stderr)
+    write_parts_READMEmd(filename)
+    print(success_message(), file=sys.stderr)
     exit(0)

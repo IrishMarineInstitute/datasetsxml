@@ -9,9 +9,9 @@ def parse_tree(filename):
                          strip_cdata=False)
     return etree.parse(filename, parser=parser)
 
-def tidy(filename):
+def tidy(filename, out=sys.stdout.buffer):
     tree = parse_tree(filename)
-    tree.write(sys.stdout.buffer, pretty_print=True, doctype='', encoding=tree.docinfo.encoding)
+    tree.write(out, pretty_print=True, doctype='', encoding=tree.docinfo.encoding)
 
 if __name__ == "__main__":
     if len(sys.argv) == 2:
