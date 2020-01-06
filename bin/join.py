@@ -2,7 +2,8 @@ import os
 from urllib.request import pathname2url
 from lxml import etree
 parser = etree.XMLParser(load_dtd=True,
-                         no_network=True)
+                         no_network=True,
+                         strip_cdata=False)
 
 tree = etree.parse("parts/_datasets.xml", parser=parser)
 

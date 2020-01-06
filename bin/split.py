@@ -48,6 +48,9 @@ class DatasetExtractor(saxutils.XMLGenerator):
         parser.EndElementHandler = self.endElement
         parser.CharacterDataHandler = self.characters
 
+        parser.StartCdataSectionHandler = self.startCDATA
+        parser.EndCdataSectionHandler = self.endCDATA
+
         saxutils.XMLGenerator(out=self.master_header).startDocument()
         self.master_header.write(b'<!DOCTYPE erddapDatasets [\n');
         parser.ParseFile(open(filename,"rb"))
@@ -95,7 +98,7 @@ class DatasetExtractor(saxutils.XMLGenerator):
         if self._in_entity:
             return
         elif self._in_cdata:
-            self.out_file.write(content)
+            self.out_file.write(bytes(content,self.encoding))
         elif self._in_secret:
             self.out_file.write(b'(secret)')
         else:
@@ -123,11 +126,11 @@ class DatasetExtractor(saxutils.XMLGenerator):
         self._in_entity = 0
 
     def startCDATA(self):
-        self.out_file.write('<![CDATA[')
+        self.out_file.write(b'<![CDATA[')
         self._in_cdata = 1
 
     def endCDATA(self):
-        self.out_file.write(']]>')
+        self.out_file.write(b']]>')
         self._in_cdata = 0
 
 
