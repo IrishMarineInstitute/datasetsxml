@@ -1,9 +1,12 @@
+#!/usr/bin/env python3
 import os
 import re
 import sys
+from tidyxml import parse_tree
 from io import BytesIO
 from xml.parsers.expat import ParserCreate, ExpatError, errors
 from xml.sax import saxutils
+import shutil
 
 class DatasetFile(object):
 
@@ -27,21 +30,27 @@ class DatasetFile(object):
 
 class DatasetExtractor(saxutils.XMLGenerator):
     
-    def __init__(self, encoding='ISO-8859-1', out=None, *args, **kwargs):
-        saxutils.XMLGenerator.__init__(self, out, encoding=encoding, *args, **kwargs)
-        self.out_file = out
+    def __init__(self, encoding='ISO-8859-1', *args, **kwargs):
+        self.out_file = DatasetFile()
+        saxutils.XMLGenerator.__init__(self, self.out_file, encoding=encoding, *args, **kwargs)
+        self.secrets_file = None
+        self.mock_secrets_file = None
         self.context = []
         self._in_entity = 0
         self._in_cdata = 0
         self._in_secret = 0
         self.encoding = encoding
         self.master_header = BytesIO()
+        self.secret_prefix = ''
+        self.secret_entity = ''
 
     def entityName(self, datasetID):
         # TODO: no duplicates
         return re.sub('[^0-9a-zA-Z_]','_',datasetID)
 
     def parse(self, filename):
+        self.secrets_file = open('parts/_actual_secrets.txt', 'wb')
+        self.mock_secrets_file = open('parts/_example_secrets.txt', 'wb')
         parser = ParserCreate()
         parser.CommentHandler = self.commentHandler
         parser.StartElementHandler = self.startElement
@@ -53,11 +62,15 @@ class DatasetExtractor(saxutils.XMLGenerator):
 
         saxutils.XMLGenerator(out=self.master_header).startDocument()
         self.master_header.write(b'<!DOCTYPE erddapDatasets [\n');
+        self.master_header.write(b'<!ENTITY % secrets SYSTEM "_secrets.txt">\n');
+        self.master_header.write(b'%secrets;\n');
         parser.ParseFile(open(filename,"rb"))
         self.master_header.write(b']>\n');
         self.master_header.write(self.out_file.master_file.getvalue())
         with open("parts/_datasets.xml","wb") as f:
             f.write(self.master_header.getvalue())
+        self.secrets_file.close()
+        self.mock_secrets_file.close()
 
     def commentHandler(self,comment):
         self.out_file.write(b'<!--')
@@ -68,9 +81,11 @@ class DatasetExtractor(saxutils.XMLGenerator):
         if name == 'dataset' or len(self.context):
           if name == 'connectionProperty':
               self._in_secret = self._in_secret + 1
+              self.secret_entity = "{0}_cp_{1}".format(self.secret_prefix,attrs["name"])
           if name == 'dataset':
               datasetID = attrs["datasetID"]
               self.out_file.open_dataset(datasetID)
+              self.secret_prefix = self.entityName(datasetID);
           self.context.append((name, attrs))
         saxutils.XMLGenerator.startElement(self, name, attrs)
 
@@ -100,7 +115,12 @@ class DatasetExtractor(saxutils.XMLGenerator):
         elif self._in_cdata:
             self.out_file.write(bytes(content,self.encoding))
         elif self._in_secret:
-            self.out_file.write(b'(secret)')
+            templ = '<!ENTITY {} "{}" >\n'
+            decl = templ.format(self.secret_entity, content)
+            self.secrets_file.write(bytes(decl,self.encoding))
+            self.out_file.write(bytes('&{0};'.format(self.secret_entity),self.encoding))
+            decl = templ.format(self.secret_entity, "(secret)")
+            self.mock_secrets_file.write(bytes(decl,self.encoding))
         else:
             saxutils.XMLGenerator.characters(self, content)
 
@@ -135,10 +155,20 @@ class DatasetExtractor(saxutils.XMLGenerator):
 
 
 if __name__ == "__main__":
-    filename, encoding = sys.argv[1:]
+    if len(sys.argv) != 2:
+        usage = '''USAGE: {0} path/to/datasets.xml
+        '''.format(sys.argv[0])
+        print(usage , file=sys.stderr)
+        exit(2)
 
-    #saxhandler = DatasetExtractor(encoding, out=DatasetFile())
-    parser = DatasetExtractor(encoding, out=DatasetFile())
-    #parser.setContentHandler(saxhandler)
-    #parser.setProperty(handler.property_lexical_handler, saxhandler)
+    if os.path.exists('parts'):
+        print("Folder exits: parts. Remove the parts folder to start again.")
+        exit(1)
+
+    os.mkdir('parts')
+    filename = sys.argv[1]
+    tree = parse_tree(filename)
+    parser = DatasetExtractor(tree.docinfo.encoding)
     parser.parse(filename)
+    shutil.copyfile('parts/_example_secrets.txt', 'parts/_secrets.txt')
+    exit(0)
