@@ -17,3 +17,12 @@ Use the bin/split_datasetsxml.py tool to split the dataset into parts, which wil
 
 Use the bin/join_datsetsxml.py tool to join the dataset parts into a single datasets.xml document
 
+## Diffing two datasets.xml
+
+Use the bin/diff_datsetsxml.py tool to determine which datasets have changes between two datasets.xml files. This can be useful for setting the flags file.
+
+```bash
+for dataset in $(bin/diff_datasetsxml.py /opt/tomcat/content/erddap/datasets.xml /opt/tomcat/content/erddap/datasets.xml.old)
+  do touch /opt/erddap/flag/$dataset
+done
+```
